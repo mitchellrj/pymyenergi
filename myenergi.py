@@ -1,6 +1,8 @@
+import asyncio
 import datetime
 import enum
-import json
+import logging
+import math
 import sys
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -9,9 +11,11 @@ import requests
 from requests.auth import HTTPDigestAuth
 
 
-api_root = 'https://s7.myenergi.net'
-serial = sys.argv[1]
-password = sys.argv[2]
+logger = logging.getLogger(__name__)
+api_root = "https://s7.myenergi.net"
+
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 def get_uri(m, params=None, order=None, sep=None):
@@ -19,32 +23,77 @@ def get_uri(m, params=None, order=None, sep=None):
         params = {}
     if order is None:
         order = sorted(params.keys())
-    if sep is None: sep = '-'
+    if sep is None:
+        sep = "-"
 
-    qs = '-' + sep.join([params[k] for k in order])
+    qs = "-" + sep.join([params[k] for k in order])
     root_parts = urlparse(api_root)
-    return urlunparse((
-        root_parts.scheme,
-        root_parts.netloc,
-        urljoin(root_parts.path, '/cgi-{}{}'.format(m, qs)),
-        '',
-        '',
-        ''
-    ))
+    return urlunparse(
+        (
+            root_parts.scheme,
+            root_parts.netloc,
+            urljoin(root_parts.path, "/cgi-{}{}".format(m, qs)),
+            "",
+            "",
+            "",
+        )
+    )
 
 
-s = requests.session()
-s.auth = HTTPDigestAuth(serial, password)
-s.headers.update({
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-})
+class Hub:
+
+    def __init__(self, serial, password):
+        self.session = requests.session()
+        self.session.auth = HTTPDigestAuth(serial, password)
+        self.session.headers.update({
+            "Accept": "application/json",
+            "Content-Type": "application/json"})
+        self._zappis = {}
+
+    def request(self, m, params, order=None, sep=None):
+        # ugh. I want to use aiohttp, but the digest authentication makes this
+        # painful
+        resp = self.session.get(get_uri(m, params, order, sep))
+        resp.raise_for_status()
+        return resp.json()
+
+    async def async_fetch_zappis(self):
+        for zappi_data in self.request('jstatus', {'id': 'Z'}).get('zappi', []):
+            z = Zappi.from_json(zappi_data, self)
+            if z.serial in self._zappis:
+                continue
+            self._zappis[z.serial] = z
+
+        return list(self._zappis.values())
+
+    async def async_fetch_harvis(self):
+        for harvi_data in self.request('jstatus', {'id': 'H'}).get('harvi', []):
+            return harvi_data
+        return
+
+    async def async_fetch_eddis(self):
+        for eddi_data in self.request('jstatus', {'id': 'E'}).get('eddi', []):
+            pass
+        return []
 
 
-def request(m, params):
-    resp = s.get(get_uri(m, params))
-    resp.raise_for_status()
-    return resp.json()
+class DeviceType(enum.Enum):
+
+    BATTERY = 'battery'
+    SOLAR_PANEL = 'solar'
+    OVERALL = 'overall'
+    POWER_GRID = 'grid'
+    HOME = 'home'
+    EDDI = 'eddi'
+    ZAPPI = 'zappi'
+
+
+class HeaterType(enum.Enum):
+
+    HEATER_1 = 1
+    HEATER_2 = 2
+    RELAY_1 = 5
+    RELAY_2 = 6
 
 
 class ZappiStatus(enum.Enum):
@@ -61,9 +110,19 @@ class ZappiStatus(enum.Enum):
 
 class ZappiMode(enum.Enum):
 
+    NO_CHANGE = 0
     FAST = 1
     ECO = 2
     ECO_PLUS = 3
+
+
+class ZappiBoostMode(enum.Enum):
+
+    NO_CHANGE = 0
+    CANCEL_NON_TIMED = 1
+    CANCEL_ALL = 2
+    START_MANUAL = 3
+    START_SMART = 4
 
 
 class CommandStatus(enum.Enum):
@@ -73,26 +132,57 @@ class CommandStatus(enum.Enum):
     FINISHED = 3
 
 
+class Schedule:
+
+    def __init__(self, heater_type, slot, sub_slot, start_time, duration,
+                 days):
+        pass
+
+    @classmethod
+    def from_json(cls, data):
+        cls(
+            HeaterType(math.floor(data['slt'] / 10)),
+            data['slt'],
+            data['slt'] % 10,
+            datetime.time(data['bsh'], data['bsm']),
+            datetime.timedelta(0, data['bdh'], data['bdm']),
+            # True/False for each day of the week, starting with Monday
+            [d == '1' for d in data['bdd'][1:]]
+        )
+
+
 class Zappi:
 
-    def __init__(self, serial):
+    device_type = DeviceType.ZAPPI
+
+    def __init__(self, serial, hub=None):
+        self.hub = hub
         self.serial = serial
         self.last_updated = None
 
+    def __eq__(self, z):
+        return self.serial == z.serial
+
+    def __str__(self):
+        return 'Z' + self.serial
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.serial)
+
     def _get_status(self, status, operating_mode):
-        if operating_mode == 'A':
+        if operating_mode == "A":
             return ZappiStatus.NOT_CONNECTED
-        elif operating_mode == 'B1':
+        elif operating_mode == "B1":
             if status in (1, 2):
                 return ZappiStatus.WAITING
             elif status == 5:
                 return ZappiStatus.COMPLETE
             return ZappiStatus.EV_WAITING
-        elif operating_mode == 'B2':
+        elif operating_mode == "B2":
             if status == 5:
                 return ZappiStatus.COMPLETE
             return ZappiStatus.DELAYED
-        elif operating_mode == 'C1':
+        elif operating_mode == "C1":
             if status == 3:
                 return ZappiStatus.CHARGING
             elif status == 4:
@@ -100,91 +190,101 @@ class Zappi:
             elif status == 5:
                 return ZappiStatus.COMPLETE
             return ZappiStatus.WAITING
-        elif operating_mode == 'C2':
+        elif operating_mode == "C2":
             if status == 4:
                 return ZappiStatus.BOOSTING
             elif status == 5:
                 return ZappiStatus.COMPLETE
             return ZappiStatus.CHARGING
-        elif operating_mode == 'F':
+        elif operating_mode == "F":
             return ZappiStatus.FAULT
         return ZappiStatus.NOT_CONNECTED
 
-    def update(self, data):
-        dt = datetime.datetime.strptime('{}T{}'.format(data['dat'], data['tim']), '%d-%m-%YT%H:%M%:S')
-        self.last_updated = dt.replace(tzinfo=pytz.UTC)
-        self.frequency = data['frq']
-        self.power_watts = data['grd']
-        self.phase = data['pha']
-        self.serial = data['sno']
-        self.status = self._get_status(data['sta'], data['pst'])
-        self.voltage = data['vol']
-        self.priority = data['pri']
-        if data['cmt'] <= 10:
+    def set_mode(self, mode=None, boost=None, kwh=0, target_time=None):
+        if mode is None:
+            mode = ZappiMode.NO_CHANGE
+        if boost is None:
+            boost = ZappiBoostMode.NO_CHANGE
+        if target_time is None:
+            target_time = '0000'
+        self.hub.request(
+            'zappi-mode',
+            {
+                'id': self.serial,
+                'mode': mode.value,
+                'boost': boost.value,
+                'kwh': kwh,
+                'targetTime': target_time
+            },
+            ['id', 'mode', 'boost', 'kwh', 'targetTime']
+        )
+
+    def get_timed_boost(self):
+        return self.hub.request('boost-time', {'id': self.serial})
+
+    def _update_from_json(self, data):
+        self.generators = []
+        for n in (1, 2, 3, 4, 5):
+            if data['ectt{}'.format(n)] == 'None':
+                continue
+            try:
+                g = {
+                    'type': DeviceType(data['ectt{}'.format(n)]),
+                    'power': data['ectp{}'.format(n)]
+                }
+            except (ValueError) as e:
+                # unsupported device type
+                #logger.warning('Unsupported device type {}'.format(data['ectt{}'.format(n)]))
+                continue
+        self.frequency = data["frq"]
+        self.phase = data["pha"]
+        self.serial = data["sno"]
+        self.status = self._get_status(data["sta"], data["pst"])
+        self.voltage = data["vol"]
+        self.power = data.get("div", 0)
+        self.priority = data["pri"]
+        if data["cmt"] <= 10:
             self.command_status = CommandStatus.IN_PROGRESS
-        elif data['cmt'] == 253:
+        elif data["cmt"] == 253:
             self.command_status = CommandStatus.FAILED
         else:
             self.command_status = CommandStatus.FINISHED
-        self.mode = ZappiMode(data['zmo'])
-        self.remaining_manual_boost = data['tbk']
-        self.remaining_smart_boost = data['sbk']
-        self.current_charge = data['che']
-        self.minimum_green_level = data['mgl']
-        self.smart_boost_target_time_minutes = (60 * data['sbh']) + data['sbm']
+        self.mode = ZappiMode(data["zmo"])
+        self.remaining_manual_boost = data.get("tbk", 0)
+        self.remaining_smart_boost = data.get("sbk", 0)
+        self.current_charge = data.get("che", 0)
+        self.minimum_green_level = data.get("mgl", 0)
+        self.smart_boost_target_time_minutes = (60 * data.get("sbh", 0)) + data.get("sbm", 0)
+        dt = datetime.datetime.strptime(
+            "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
+        )
+        self.last_updated = dt.replace(tzinfo=pytz.UTC)
 
-# Z = zappi
-# E = eddi
-# H = harvi
-print(json.dumps(request('jstatus', {'id': 'Z'}),indent=2))
-print(json.dumps(request('jstatus', {'id': 'E'}),indent=2))
-print(json.dumps(request('jstatus', {'id': 'H'}),indent=2))
+    @classmethod
+    def from_json(cls, data, hub=None):
+        if hub is not None and data['sno'] in hub._zappis:
+            z = hub._zappis[data['sno']]
+        else:
+            z = cls(data['sno'], hub)
+        z._update_from_json(data)
+        return z
 
 
-{
-  "zappi": [
-    {
-      "dat": "07-10-2019",
-      "tim": "21:04:29",
-      "ectp1": -8,
-      "ectp2": -29,
-      "ectt1": "None",
-      "ectt2": "None",
-      "frq": 49.95,
-      "grd": 632,
-      "pha": 1,
-      "sno": 12016875,
-      "sta": 1,
-      "vol": 241.5,
-      "pri": 1,
-      "cmt": 254,
-      "zmo": 1,
-      "tbk": 5,
-      "che": 9,
-      "pst": "B2",
-      "mgl": 50,
-      "sbh": 17,
-      "sbk": 5
-    }
-  ]
-}
+async def async_main(serial, password):
+    hub = Hub(serial, password)
+    await hub.async_fetch_zappis()
+    print(hub._zappis[0])
 
-# dat = date (UTC)
-# tim = time (UTC)
-# ectp2 = power (source)
-# ectt2 = type (source)
-# frq = frequency (Hz)?
-# grd = grid power
-# pha = phase
-# sno = unit serial number (prefix with Z)
-# vol = voltage
-# pri = priority
-# cmt = command status (<=10 == in progress, 253 == failed, other == finished)
-# mgl = minimum green level
-# tbk = remaining manual boost
-# sbk = remaining smart boost
-# che = current charge
-# zmo = zappi mode (1=fast, 2=eco, 3=eco+)
-# command status
-# boost status
-# smart boost target time = 60 * (t.sbh || 0) + (t.sbm || 0)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    serial = argv[0]
+    password = argv[1]
+
+    asyncio.run(async_main(serial, password))
+
+
+if __name__ == '__main__':
+    main()
