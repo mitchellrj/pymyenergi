@@ -13,12 +13,10 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_platform(hass, config, async_add_entities, device_config=None):
     """Set up the MyEnergi platform."""
     if device_config is None:
-        _LOGGER.info('MyEnergi config is none')
         return
 
     manager = hass.data[DOMAIN][device_config[CONF_USERNAME]]
     manager.setup_sensors_platform(async_add_entities)
-    _LOGGER.info('Starting MyEnergi manager')
     await manager.start()
 
 

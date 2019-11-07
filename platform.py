@@ -22,19 +22,19 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = 'myenergi'
 
 # Status states
-STATE_NOT_CONNECTED = 'not-connected'
-STATE_EV_WAITING = 'ev-waiting'
-STATE_WAITING = 'waiting'
-STATE_CHARGING = 'charging'
-STATE_BOOSTING = 'boosting'
-STATE_COMPLETE = 'complete'
-STATE_DELAYED = 'delayed'
-STATE_FAULT = 'fault'
+STATE_NOT_CONNECTED = 'Not connected'
+STATE_EV_WAITING = 'EV waiting'
+STATE_WAITING = 'Waiting'
+STATE_CHARGING = 'Charging'
+STATE_BOOSTING = 'Boosting'
+STATE_COMPLETE = 'Complete'
+STATE_DELAYED = 'Delayed'
+STATE_FAULT = 'Fault'
 # Modes
 ATTR_MODE = 'mode'
-ATTR_MODE_FAST = 'fast'
-ATTR_MODE_ECO = 'eco'
-ATTR_MODE_ECO_PLUS = 'eco-plus'
+ATTR_MODE_FAST = 'Fast'
+ATTR_MODE_ECO = 'Eco'
+ATTR_MODE_ECO_PLUS = 'Eco-Plus'
 # other attributes
 ATTR_POWER = 'power'
 ATTR_VOLTAGE = 'voltage'
@@ -51,20 +51,24 @@ CONFIG_SCHEMA = vol.Schema({
 
 class MyEnergiManager:
 
-    SCAN_INTERVAL = timedelta(seconds=5)
+    SCAN_INTERVAL = timedelta(seconds=10)
 
     def __init__(self, hass, username, password):
         self.hass = hass
         self.hub = myenergi.Hub(username, password)
         self._zappis_seen = {}
-        self.async_add_entities = None
+        self.async_add_entities = self.async_add_entities_binary = None
         self._started = False
+    
+    def setup_binary_sensors_platform(self, async_add_entities):
+        self.async_add_entities_binary = async_add_entities
     
     def setup_sensors_platform(self, async_add_entities):
         self.async_add_entities = async_add_entities
 
     async def async_update_items(self):
         all_new_sensors = []
+        all_new_binary_sensors = []
         try:
             with async_timeout.timeout(4):
                 zappis = await self.hub.async_fetch_zappis()
@@ -72,23 +76,29 @@ class MyEnergiManager:
             _LOGGER.error('Fetching Zappis timed out')
             return
 
+        from .binary_sensor import ZappiPresenceSensor
         from .sensor import ZappiStatusSensor, ZappiPowerSensor
 
         for zappi in zappis:
             if zappi.serial in self._zappis_seen:
                 for s in self._zappis_seen[zappi.serial]:
-                    self.hass.async_create_task(s.async_update_ha_state())
+                    self.hass.async_create_task(s.async_update_ha_state(force_refresh=True))
                 continue
-
+            
+            new_binary_sensors = [
+                ZappiPresenceSensor(zappi),
+            ]
             new_sensors = [
                 ZappiStatusSensor(zappi),
                 ZappiPowerSensor(zappi),
             ]
-            self._zappis_seen[zappi.serial] = new_sensors
+            self._zappis_seen[zappi.serial] = new_sensors + new_binary_sensors
 
             all_new_sensors.extend(new_sensors)
+            all_new_binary_sensors.extend(new_binary_sensors)
 
         self.async_add_entities(all_new_sensors)
+        self.async_add_entities_binary(all_new_binary_sensors)
 
         # Removing items? uhhh. TODO
 
@@ -96,8 +106,7 @@ class MyEnergiManager:
         """Start updating sensors from the hub on a schedule."""
         # but only if it's not already started, and when we've got the
         # async_add_entities method
-        if self._started or self.async_add_entities is None:
-            _LOGGER.info('Starting MyEnergi manager failed: {}. {}'.format(self._started, self.async_add_entities))
+        if self._started or None in (self.async_add_entities, self.async_add_entities_binary):
             return
 
         self._started = True
@@ -125,5 +134,6 @@ def setup(hass, config):
     hass.data[DOMAIN][device_info[CONF_USERNAME]] = MyEnergiManager(hass, device_info[CONF_USERNAME], device_info[CONF_PASSWORD])
     device_info = dict(device_info)
     device_info.pop(CONF_PASSWORD)
+    discovery.load_platform(hass, 'binary_sensor', DOMAIN, device_info, config)
     discovery.load_platform(hass, 'sensor', DOMAIN, device_info, config)
     return True
