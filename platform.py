@@ -6,6 +6,7 @@ from datetime import timedelta
 import logging
 
 import async_timeout
+from requests.exceptions import RequestException
 import voluptuous as vol
 
 from homeassistant.const import (
@@ -52,6 +53,8 @@ CONFIG_SCHEMA = vol.Schema({
 class MyEnergiManager:
 
     SCAN_INTERVAL = timedelta(seconds=10)
+    back_off = 0
+    back_off_factor = 1.25
 
     def __init__(self, hass, username, password):
         self.hass = hass
@@ -72,10 +75,15 @@ class MyEnergiManager:
         try:
             with async_timeout.timeout(4):
                 zappis = await self.hub.async_fetch_zappis()
-        except asyncio.TimeoutError:
-            _LOGGER.error('Fetching Zappis timed out')
+        except (asyncio.TimeoutError, RequestException) as e:
+            _LOGGER.error('Error while fetching Zappis: %s', e)
+            self.back_off += 1
+            _LOGGER.info('Backing off; will retry in %s seconds', round((
+                self.SCAN_INTERVAL * (self.back_off ** self.back_off_factor)
+            ).total_seconds(), 2))
             return
 
+        self.back_off = 0
         from .binary_sensor import ZappiPresenceSensor
         from .sensor import ZappiStatusSensor, ZappiPowerSensor
 
@@ -121,7 +129,7 @@ class MyEnergiManager:
             await self.async_update_items()
 
             async_track_point_in_utc_time(
-                self.hass, async_update, utcnow() + self.SCAN_INTERVAL
+                self.hass, async_update, utcnow() + (self.SCAN_INTERVAL * (self.back_off ** self.back_off_factor))
             )
 
         await async_update(None)
