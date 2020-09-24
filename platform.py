@@ -74,7 +74,7 @@ class MyEnergiManager:
         all_new_binary_sensors = []
         try:
             with async_timeout.timeout(4):
-                zappis = await self.hub.async_fetch_zappis()
+                zappis = await hass.async_add_executor_job(self.hub.async_fetch_zappis)
         except (asyncio.TimeoutError, RequestException) as e:
             _LOGGER.error('Error while fetching Zappis: %s', e)
             self.back_off += 1
