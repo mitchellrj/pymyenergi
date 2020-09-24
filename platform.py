@@ -79,7 +79,7 @@ class MyEnergiManager:
             _LOGGER.error('Error while fetching Zappis: %s', e)
             self.back_off += 1
             _LOGGER.info('Backing off; will retry in %s seconds', round((
-                self.SCAN_INTERVAL * (self.back_off ** self.back_off_factor)
+                self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
             ).total_seconds(), 2))
             return
 
@@ -129,7 +129,7 @@ class MyEnergiManager:
             await self.async_update_items()
 
             async_track_point_in_utc_time(
-                self.hass, async_update, utcnow() + (self.SCAN_INTERVAL * (self.back_off ** self.back_off_factor))
+                self.hass, async_update, utcnow() + (self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor)))
             )
 
         await async_update(None)
