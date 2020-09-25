@@ -50,6 +50,10 @@ class Hub:
             "Content-Type": "application/json"})
         self._zappis = {}
 
+    def async_request(self, m, params, order=None, sep=None):
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(None, self.request, m, params, order, sep)
+
     def request(self, m, params, order=None, sep=None):
         # ugh. I want to use aiohttp, but the digest authentication makes this
         # painful
@@ -58,7 +62,8 @@ class Hub:
         return resp.json()
 
     async def async_fetch_zappis(self):
-        for zappi_data in self.request('jstatus', {'id': 'Z'}).get('zappi', []):
+        response = await self.async_request('jstatus', {'id': 'Z'})
+        for zappi_data in response.get('zappi', []):
             z = Zappi.from_json(zappi_data, self)
             if z.serial in self._zappis:
                 continue
@@ -67,12 +72,14 @@ class Hub:
         return list(self._zappis.values())
 
     async def async_fetch_harvis(self):
-        for harvi_data in self.request('jstatus', {'id': 'H'}).get('harvi', []):
+        response = await self.async_request('jstatus', {'id': 'H'})
+        for harvi_data in response.get('harvi', []):
             return harvi_data
         return
 
     async def async_fetch_eddis(self):
-        for eddi_data in self.request('jstatus', {'id': 'E'}).get('eddi', []):
+        response = await self.async_request('jstatus', {'id': 'E'})
+        for eddi_data in response.get('eddi', []):
             pass
         return []
 
@@ -200,14 +207,14 @@ class Zappi:
             return ZappiStatus.FAULT
         return ZappiStatus.NOT_CONNECTED
 
-    def set_mode(self, mode=None, boost=None, kwh=0, target_time=None):
+    async def async_set_mode(self, mode=None, boost=None, kwh=0, target_time=None):
         if mode is None:
             mode = ZappiMode.NO_CHANGE
         if boost is None:
             boost = ZappiBoostMode.NO_CHANGE
         if target_time is None:
             target_time = '0000'
-        self.hub.request(
+        return self.hub.request(
             'zappi-mode',
             {
                 'id': self.serial,
@@ -219,7 +226,7 @@ class Zappi:
             ['id', 'mode', 'boost', 'kwh', 'targetTime']
         )
 
-    def get_timed_boost(self):
+    async def get_timed_boost(self):
         return self.hub.request('boost-time', {'id': self.serial})
 
     def _update_from_json(self, data):
