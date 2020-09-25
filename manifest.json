@@ -1,0 +1,11 @@
+{
+  "domain": "myenergi",
+  "name": "MyEnergi",
+  "documentation": "https://github.com/mitchellrj/pymyenergi",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [
+      "pytz",
+      "requests"
+  ]
+}
