@@ -50,6 +50,7 @@ class Hub:
             "Accept": "application/json",
             "Content-Type": "application/json"})
         self._zappis = {}
+        self._harvis = {}
 
     def async_request(self, m, params, order=None, sep=None):
         loop = asyncio.get_running_loop()
@@ -75,8 +76,11 @@ class Hub:
     async def async_fetch_harvis(self):
         response = await self.async_request('jstatus', {'id': 'H'})
         for harvi_data in response.get('harvi', []):
-            return harvi_data
-        return
+            h = Harvi.from_json(harvi_data, self)
+            if h.serial in self._harvis:
+                continue
+            self._harvis[h.serial] = h
+        return list(self._harvis.values())
 
     async def async_fetch_eddis(self):
         response = await self.async_request('jstatus', {'id': 'E'})
@@ -87,6 +91,7 @@ class Hub:
 
 class DeviceType(enum.Enum):
 
+    HARVI = 'harvi'
     BATTERY = 'battery'
     SOLAR_PANEL = 'solar'
     OVERALL = 'overall'
@@ -219,6 +224,13 @@ class Device:
         return z
 
 
+class Harvi(Device):
+
+    device_type = DeviceType.HARVI
+    device_serial_prefix = 'H'
+    device_map_key = 'harvis'
+
+
 class Zappi(Device):
 
     device_type = DeviceType.ZAPPI
@@ -299,25 +311,16 @@ class Zappi(Device):
         self.current_charge = data.get("che", 0)
         self.minimum_green_level = data.get("mgl", 0)
         self.smart_boost_target_time_minutes = (60 * data.get("sbh", 0)) + data.get("sbm", 0)
-        dt = datetime.datetime.strptime(
-            "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
-        )
-        self.last_updated = dt.replace(tzinfo=pytz.UTC)
-
-    @classmethod
-    def from_json(cls, data, hub=None):
-        if hub is not None and data['sno'] in hub._zappis:
-            z = hub._zappis[data['sno']]
-        else:
-            z = cls(data['sno'], hub)
-        z._update_from_json(data)
-        return z
 
 
 async def async_main(serial, password):
     hub = Hub(serial, password)
-    await hub.async_fetch_zappis()
-    print(hub._zappis[0])
+    zappis = await hub.async_fetch_zappis()
+    harvis = await hub.async_fetch_harvis()
+    print(zappis[0])
+    print(harvis[0])
+    print(zappis[0].generators)
+    print(harvis[0].generators)
 
 
 def main(argv=None):
