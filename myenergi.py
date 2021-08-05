@@ -5,6 +5,7 @@ import logging
 import math
 import sys
 from urllib.parse import urljoin, urlparse, urlunparse
+import weakref
 
 import pytz
 import requests
@@ -158,23 +159,71 @@ class Schedule:
         )
 
 
-class Zappi:
+class Device:
 
-    device_type = DeviceType.ZAPPI
+    device_type = None
+    device_serial_prefix = None
+    device_map_key = None
 
     def __init__(self, serial, hub=None):
-        self.hub = hub
+        self.__hub = weakref.ref(hub) if hub else None
         self.serial = serial
         self.last_updated = None
+    
+    @property
+    def hub(self):
+        return self.__hub() if self.__hub else None
 
-    def __eq__(self, z):
-        return self.serial == z.serial
+    def __eq__(self, other):
+        return self.serial == other.serial
 
     def __str__(self):
-        return 'Z' + self.serial
+        return self.device_serial_prefix + str(self.serial)
 
     def __repr__(self):
         return '{}({})'.format(self.__class__.__name__, self.serial)
+
+    def _update_from_json(self, data):
+        self.generators = []
+        print(data)
+        for n in range(1, 6):
+            g_name = 'ectt{}'.format(n)
+            if g_name not in data:
+                break
+            if data[g_name].lower() in ('none', 'internal load'):
+                continue
+            try:
+                g = {
+                    'type': DeviceType(data['ectt{}'.format(n)].lower()),
+                    'power': data['ectp{}'.format(n)]
+                }
+                self.generators.append(g)
+            except (ValueError) as e:
+                # unsupported device type
+                #logger.warning('Unsupported device type {}'.format(data['ectt{}'.format(n)]))
+                logger.exception(e)
+                continue
+        dt = datetime.datetime.strptime(
+            "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
+        )
+        self.last_updated = dt.replace(tzinfo=pytz.UTC)
+
+    @classmethod
+    def from_json(cls, data, hub=None):
+        device_map = getattr(hub, '_{}'.format(cls.device_map_key))
+        if hub is not None and data['sno'] in device_map:
+            z = device_map[data['sno']]
+        else:
+            z = cls(data['sno'], hub)
+        z._update_from_json(data)
+        return z
+
+
+class Zappi(Device):
+
+    device_type = DeviceType.ZAPPI
+    device_serial_prefix = 'Z'
+    device_map_key = 'zappis'
 
     def _get_status(self, status, operating_mode):
         if operating_mode == "A":
@@ -230,19 +279,7 @@ class Zappi:
         return self.hub.request('boost-time', {'id': self.serial})
 
     def _update_from_json(self, data):
-        self.generators = []
-        for n in (1, 2, 3, 4, 5):
-            if data['ectt{}'.format(n)] == 'None':
-                continue
-            try:
-                g = {
-                    'type': DeviceType(data['ectt{}'.format(n)]),
-                    'power': data['ectp{}'.format(n)]
-                }
-            except (ValueError) as e:
-                # unsupported device type
-                #logger.warning('Unsupported device type {}'.format(data['ectt{}'.format(n)]))
-                continue
+        super(Zappi, self)._update_from_json(data)
         self.frequency = data["frq"]
         self.phase = data["pha"]
         self.serial = data["sno"]
