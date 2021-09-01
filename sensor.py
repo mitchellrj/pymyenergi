@@ -118,17 +118,11 @@ POWER_ICONS = {
 }
 
 
-class PowerSensor(Entity):
+class PowerSensorBase(Entity):
     """The entity class for a generation source."""
 
-    def __init__(self, device, generator_index):
+    def __init__(self, device):
         self._device = device
-        self._generator_index = generator_index
-        device_type_title = str(device.device_type).title()
-        generator_type = device.generators[generator_index]['type']
-        generator_type_title = str(generator_type).title()
-        self._name = '{} {} power from {}'.format(device_type_title, str(device), generator_type_title)
-        self._icon = POWER_ICONS.get(generator_type, 'mdi:power-plug')
         self._unit = POWER_WATT
         self._device_class = DEVICE_CLASS_POWER
         self.update()
@@ -141,22 +135,18 @@ class PowerSensor(Entity):
     @property
     def unique_id(self):
         """Return the unique ID of the binary sensor."""
-        return self._name
+        return self.name
 
     @property
-    def name(self):
-        """Return the name of the device."""
-        return self._name
+    def icon(self):
+        if self._icon is None:
+            self._icon = POWER_ICONS.get(self._device_type, 'mdi:power-plug')
+        return self._icon
 
     @property
     def device_class(self):
         """Return the class of this sensor."""
         return self._device_class
-
-    @property
-    def icon(self):
-        """Icon to use in the frontend, if any."""
-        return self._icon
 
     @property
     def state(self):
@@ -185,12 +175,35 @@ class PowerSensor(Entity):
         self._attributes = {}
 
 
-class ZappiPowerSensor(PowerSensor):
+class GenerationSensor(PowerSensorBase):
+    """The entity class for a generation source."""
+
+    def __init__(self, device, generator_index):
+        self._generator_index = generator_index
+        self._device_type = self._device.generators[self._generator_index]['type']
+        PowerSensorBase.__init__(self, device)
+
+    @property
+    def name(self):
+        """Return the name of the device."""
+        if self._name is None:
+            device_type_title = str(self._device.device_type).title()
+            generator_type_title = str(self._device_type).title()
+            self._name = '{} {} power from {}'.format(device_type_title, str(self._device), generator_type_title)
+        return self._name
+
+
+class ZappiPowerSensor(PowerSensorBase):
     """The entity class for a Zappi charging station power."""
 
-    def __init__(self, *args, **kwargs):
-        PowerSensor.__init__(self, *args, **kwargs)
-        self._name = '{} {} power'.format(str(self._device.device_type).title(), str(self._device))
+    _device_type = DeviceType.ZAPPI
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = '{} {} power'.format(str(self._device.device_type).title(), str(self._device))
+        return self._name
+
 
     @property
     def is_on(self):
