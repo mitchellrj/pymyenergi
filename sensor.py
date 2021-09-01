@@ -111,22 +111,23 @@ class ZappiStatusSensor(Entity):
         }
 
 
-class ZappiPowerSensor(Entity):
-    """The entity class for a Zappi charging station power."""
+POWER_ICONS = {
+    DeviceType.POWER_GRID: 'mdi:transmission-tower',
+    DeviceType.SOLAR_PANEL: 'mdi:solar-power',
+    DeviceType.BATTERY: 'mdi:battery-minus',
+}
 
-    def __init__(self, zappi):
-        """Initialize the Zappi power Sensor."""
-        self._zappi = zappi
-        self._name = 'Zappi z{} power usage'.format(zappi.serial)
-        self._icon = 'mdi:power-plug'
+
+class PowerSensorBase(Entity):
+    """The entity class for a generation source."""
+
+    def __init__(self, device):
+        self._name = None
+        self._icon = None
+        self._device = device
         self._unit = POWER_WATT
         self._device_class = DEVICE_CLASS_POWER
         self.update()
-
-    @property
-    def is_on(self):
-        """Return True if entity is on."""
-        return STATE_MAP.get(self._zappi.status, STATE_FAULT) in (STATE_BOOSTING, STATE_CHARGING) and self._state > 0
 
     @property
     def should_poll(self):
@@ -136,22 +137,18 @@ class ZappiPowerSensor(Entity):
     @property
     def unique_id(self):
         """Return the unique ID of the binary sensor."""
-        return self._name
+        return self.name
 
     @property
-    def name(self):
-        """Return the name of the device."""
-        return self._name
+    def icon(self):
+        if self._icon is None:
+            self._icon = POWER_ICONS.get(self._device_type, 'mdi:power-plug')
+        return self._icon
 
     @property
     def device_class(self):
         """Return the class of this sensor."""
         return self._device_class
-
-    @property
-    def icon(self):
-        """Icon to use in the frontend, if any."""
-        return self._icon
 
     @property
     def state(self):
@@ -166,7 +163,7 @@ class ZappiPowerSensor(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, 'z' + str(self._zappi.serial))
+            'identifiers': (DOMAIN, str(self._device))
         }
 
     @property
@@ -176,5 +173,46 @@ class ZappiPowerSensor(Entity):
 
     def update(self):
         """Get latest cached states from the device."""
-        self._state = self._zappi.power
+        self._state = self._device.generators[self._generator_index]['power']
+        self._attributes = {}
+
+
+class GenerationSensor(PowerSensorBase):
+    """The entity class for a generation source."""
+
+    def __init__(self, device, generator_index):
+        self._generator_index = generator_index
+        self._device_type = device.generators[self._generator_index]['type']
+        PowerSensorBase.__init__(self, device)
+
+    @property
+    def name(self):
+        """Return the name of the device."""
+        if self._name is None:
+            device_type_title = self._device.device_type.value.title()
+            generator_type_title = self._device_type.value.title()
+            self._name = '{} {} power from {}'.format(device_type_title, str(self._device), generator_type_title)
+        return self._name
+
+
+class ZappiPowerSensor(PowerSensorBase):
+    """The entity class for a Zappi charging station power."""
+
+    _device_type = DeviceType.ZAPPI
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = '{} {} power'.format(self._device.device_type.value.title(), str(self._device))
+        return self._name
+
+
+    @property
+    def is_on(self):
+        """Return True if entity is on."""
+        return STATE_MAP.get(self._device.status, STATE_FAULT) in (STATE_BOOSTING, STATE_CHARGING) and self._state > 0
+
+    def update(self):
+        """Get latest cached states from the device."""
+        self._state = self._device.power
         self._attributes = {}

@@ -190,7 +190,6 @@ class Device:
 
     def _update_from_json(self, data):
         self.generators = []
-        print(data)
         for n in range(1, 6):
             g_name = 'ectt{}'.format(n)
             if g_name not in data:
