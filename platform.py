@@ -99,7 +99,7 @@ class MyEnergiManager:
 
         self.back_off = 0
         from .binary_sensor import ZappiPresenceSensor
-        from .sensor import PowerSensor, ZappiStatusSensor, ZappiPowerSensor
+        from .sensor import GenerationSensor, ZappiStatusSensor, ZappiPowerSensor
 
         for zappi in zappis:
             if zappi.serial in self._zappis_seen:
@@ -115,7 +115,7 @@ class MyEnergiManager:
                 ZappiPowerSensor(zappi),
             ]
             new_sensors.extend([
-                PowerSensor(zappi, i) for i in range(len(zappi.generators))
+                GenerationSensor(zappi, i) for i in range(len(zappi.generators))
             ])
             self._zappis_seen[zappi.serial] = new_sensors + new_binary_sensors
 
@@ -141,7 +141,7 @@ class MyEnergiManager:
             return
 
         self.back_off = 0
-        from .sensor import PowerSensor
+        from .sensor import GenerationSensor
 
         for harvi in harvis:
             if harvi.serial in self._harvis_seen:
@@ -150,7 +150,7 @@ class MyEnergiManager:
                 continue
             
             new_sensors = [
-                PowerSensor(harvi, i) for i in range(len(harvi.generators))
+                GenerationSensor(harvi, i) for i in range(len(harvi.generators))
             ]
             self._harvis_seen[harvi.serial] = new_sensors
 
