@@ -60,6 +60,7 @@ class MyEnergiManager:
         self.hass = hass
         self.hub = myenergi.Hub(username, password)
         self._zappis_seen = {}
+        self._harvis_seen = {}
         self.async_add_entities = self.async_add_entities_binary = None
         self._started = False
     
@@ -70,6 +71,16 @@ class MyEnergiManager:
         self.async_add_entities = async_add_entities
 
     async def async_update_items(self):
+        new_zappi_sensors, new_zappi_binary_sensors = await self.async_update_zappis()
+        self.async_add_entities(new_zappi_sensors)
+        self.async_add_entities_binary(new_zappi_binary_sensors)
+        new_harvi_sensors, new_harvi_binary_sensors = await self.async_update_harvis()
+        self.async_add_entities(new_harvi_sensors)
+        self.async_add_entities_binary(new_harvi_binary_sensors)
+
+        # Removing items? uhhh. TODO
+
+    async def async_update_zappis(self):
         all_new_sensors = []
         all_new_binary_sensors = []
         try:
@@ -77,7 +88,7 @@ class MyEnergiManager:
                 zappis = await self.hub.async_fetch_zappis()
         except (asyncio.TimeoutError, RequestException) as e:
             if isinstance(e, asyncio.TimeoutError):
-                _LOGGER.error('Fetching Zappis timed out')
+                _LOGGER.error('Fetching devices timed out')
             else:
                 _LOGGER.error('Error while fetching Zappis: %s', e)
             self.back_off += 1
@@ -88,7 +99,7 @@ class MyEnergiManager:
 
         self.back_off = 0
         from .binary_sensor import ZappiPresenceSensor
-        from .sensor import ZappiStatusSensor, ZappiPowerSensor
+        from .sensor import PowerSensor, ZappiStatusSensor, ZappiPowerSensor
 
         for zappi in zappis:
             if zappi.serial in self._zappis_seen:
@@ -103,15 +114,49 @@ class MyEnergiManager:
                 ZappiStatusSensor(zappi),
                 ZappiPowerSensor(zappi),
             ]
+            new_sensors.extend([
+                PowerSensor(zappi, i) for i in range(len(zappi.generators))
+            ])
             self._zappis_seen[zappi.serial] = new_sensors + new_binary_sensors
 
             all_new_sensors.extend(new_sensors)
             all_new_binary_sensors.extend(new_binary_sensors)
 
-        self.async_add_entities(all_new_sensors)
-        self.async_add_entities_binary(all_new_binary_sensors)
+        return all_new_sensors, all_new_binary_sensors
 
-        # Removing items? uhhh. TODO
+    async def async_update_harvis(self):
+        all_new_sensors = []
+        try:
+            with async_timeout.timeout(4):
+                harvis = await self.hub.async_fetch_harvis()
+        except (asyncio.TimeoutError, RequestException) as e:
+            if isinstance(e, asyncio.TimeoutError):
+                _LOGGER.error('Fetching devices timed out')
+            else:
+                _LOGGER.error('Error while fetching Harvis: %s', e)
+            self.back_off += 1
+            _LOGGER.info('Backing off; will retry in %s seconds', round((
+                self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
+            ).total_seconds(), 2))
+            return
+
+        self.back_off = 0
+        from .sensor import PowerSensor
+
+        for harvi in harvis:
+            if harvi.serial in self._harvis_seen:
+                for s in self._harvis_seen[harvi.serial]:
+                    self.hass.async_create_task(s.async_update_ha_state(force_refresh=True))
+                continue
+            
+            new_sensors = [
+                PowerSensor(harvi, i) for i in range(len(harvi.generators))
+            ]
+            self._harvis_seen[harvi.serial] = new_sensors
+
+            all_new_sensors.extend(new_sensors)
+
+        return all_new_sensors, []
 
     async def start(self):
         """Start updating sensors from the hub on a schedule."""
