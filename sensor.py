@@ -122,6 +122,8 @@ class PowerSensorBase(Entity):
     """The entity class for a generation source."""
 
     def __init__(self, device):
+        self._name = None
+        self._icon = None
         self._device = device
         self._unit = POWER_WATT
         self._device_class = DEVICE_CLASS_POWER
@@ -180,7 +182,7 @@ class GenerationSensor(PowerSensorBase):
 
     def __init__(self, device, generator_index):
         self._generator_index = generator_index
-        self._device_type = self._device.generators[self._generator_index]['type']
+        self._device_type = device.generators[self._generator_index]['type']
         PowerSensorBase.__init__(self, device)
 
     @property
