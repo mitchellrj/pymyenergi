@@ -189,8 +189,8 @@ class GenerationSensor(PowerSensorBase):
     def name(self):
         """Return the name of the device."""
         if self._name is None:
-            device_type_title = str(self._device.device_type).title()
-            generator_type_title = str(self._device_type).title()
+            device_type_title = self._device.device_type.value.title()
+            generator_type_title = self._device_type.value.title()
             self._name = '{} {} power from {}'.format(device_type_title, str(self._device), generator_type_title)
         return self._name
 
@@ -203,7 +203,7 @@ class ZappiPowerSensor(PowerSensorBase):
     @property
     def name(self):
         if self._name is None:
-            self._name = '{} {} power'.format(str(self._device.device_type).title(), str(self._device))
+            self._name = '{} {} power'.format(self._device.device_type.value.title(), str(self._device))
         return self._name
 
 

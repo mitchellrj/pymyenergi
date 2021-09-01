@@ -189,7 +189,6 @@ class Device:
         return '{}({})'.format(self.__class__.__name__, self.serial)
 
     def _update_from_json(self, data):
-        print(data)
         self.generators = []
         for n in range(1, 6):
             g_name = 'ectt{}'.format(n)
