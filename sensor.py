@@ -163,7 +163,7 @@ class PowerSensorBase(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, str(self._zappi))
+            'identifiers': (DOMAIN, str(self._device))
         }
 
     @property
