@@ -95,7 +95,7 @@ class MyEnergiManager:
             _LOGGER.info('Backing off; will retry in %s seconds', round((
                 self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
             ).total_seconds(), 2))
-            return
+            return [], []
 
         self.back_off = 0
         from .binary_sensor import ZappiPresenceSensor
@@ -138,7 +138,7 @@ class MyEnergiManager:
             _LOGGER.info('Backing off; will retry in %s seconds', round((
                 self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
             ).total_seconds(), 2))
-            return
+            return [], []
 
         self.back_off = 0
         from .sensor import GenerationSensor
