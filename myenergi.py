@@ -174,6 +174,7 @@ class Device:
         self.__hub = weakref.ref(hub) if hub else None
         self.serial = serial
         self.last_updated = None
+        self.generators = []
     
     @property
     def hub(self):
@@ -201,7 +202,7 @@ class Device:
                     'type': DeviceType(data['ectt{}'.format(n)].lower()),
                     'power': data['ectp{}'.format(n)]
                 }
-                self.generators.append(g)
+                generators.append(g)
             except (ValueError) as e:
                 # unsupported device type
                 #logger.warning('Unsupported device type {}'.format(data['ectt{}'.format(n)]))
@@ -210,7 +211,7 @@ class Device:
         dt = datetime.datetime.strptime(
             "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
         )
-        self._generators = generators
+        self.generators = generators
         self.last_updated = dt.replace(tzinfo=pytz.UTC)
 
     @classmethod
