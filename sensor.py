@@ -93,7 +93,10 @@ class ZappiStatusSensor(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, 'z' + str(self._zappi.serial))
+            'identifiers': (DOMAIN, str(self._zappi)),
+            'name': str(self._zappi),
+            'manufacturer': 'MyEnergi',
+            'model': 'Zappi'
         }
 
     @property
@@ -163,7 +166,10 @@ class PowerSensorBase(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, str(self._device))
+            'identifiers': (DOMAIN, str(self._device)),
+            'name': str(self._device),
+            'manufacturer': 'MyEnergi',
+            'model': self._device.device_type.value.title()
         }
 
     @property
