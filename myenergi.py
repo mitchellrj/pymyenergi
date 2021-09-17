@@ -189,7 +189,7 @@ class Device:
         return '{}({})'.format(self.__class__.__name__, self.serial)
 
     def _update_from_json(self, data):
-        self.generators = []
+        generators = []
         for n in range(1, 6):
             g_name = 'ectt{}'.format(n)
             if g_name not in data:
@@ -210,6 +210,7 @@ class Device:
         dt = datetime.datetime.strptime(
             "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
         )
+        self._generators = generators
         self.last_updated = dt.replace(tzinfo=pytz.UTC)
 
     @classmethod
