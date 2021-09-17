@@ -39,6 +39,7 @@ ATTR_MODE_ECO_PLUS = 'Eco-Plus'
 # other attributes
 ATTR_POWER = 'power'
 ATTR_VOLTAGE = 'voltage'
+ATTR_LAST_UPDATED = 'last_updated'
 
 DEVICE_SCHEMA = vol.Schema({
     vol.Required(CONF_USERNAME): cv.string,
