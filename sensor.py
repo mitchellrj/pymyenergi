@@ -4,7 +4,7 @@ import logging
 from homeassistant.const import CONF_USERNAME, DEVICE_CLASS_POWER, POWER_WATT
 from homeassistant.helpers.entity import Entity
 
-from .platform import ATTR_MODE, ATTR_MODE_ECO, ATTR_MODE_ECO_PLUS, ATTR_MODE_FAST, ATTR_POWER, ATTR_VOLTAGE, DOMAIN, STATE_BOOSTING, STATE_CHARGING, STATE_COMPLETE, STATE_DELAYED, STATE_EV_WAITING, STATE_FAULT, STATE_NOT_CONNECTED, STATE_WAITING
+from .platform import ATTR_LAST_UPDATED, ATTR_MODE, ATTR_MODE_ECO, ATTR_MODE_ECO_PLUS, ATTR_MODE_FAST, ATTR_POWER, ATTR_VOLTAGE, DOMAIN, STATE_BOOSTING, STATE_CHARGING, STATE_COMPLETE, STATE_DELAYED, STATE_EV_WAITING, STATE_FAULT, STATE_NOT_CONNECTED, STATE_WAITING
 from .myenergi import DeviceType, ZappiMode, ZappiStatus
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,7 +93,10 @@ class ZappiStatusSensor(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, 'z' + str(self._zappi.serial))
+            'identifiers': (DOMAIN, str(self._zappi)),
+            'name': str(self._zappi),
+            'manufacturer': 'MyEnergi',
+            'model': 'Zappi'
         }
 
     @property
@@ -108,6 +111,7 @@ class ZappiStatusSensor(Entity):
             ATTR_MODE: MODE_MAP.get(self._zappi.mode, ATTR_MODE_ECO),
             ATTR_POWER: self._zappi.power,
             ATTR_VOLTAGE: self._zappi.voltage,
+            ATTR_LAST_UPDATED: self._zappi.last_updated.isoformat(),
         }
 
 
@@ -163,7 +167,10 @@ class PowerSensorBase(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, str(self._device))
+            'identifiers': (DOMAIN, str(self._device)),
+            'name': str(self._device),
+            'manufacturer': 'MyEnergi',
+            'model': self._device.device_type.value.title()
         }
 
     @property
@@ -174,7 +181,7 @@ class PowerSensorBase(Entity):
     def update(self):
         """Get latest cached states from the device."""
         self._state = self._device.generators[self._generator_index]['power']
-        self._attributes = {}
+        self._attributes = {ATTR_LAST_UPDATED: self._device.last_updated.isoformat()}
 
 
 class GenerationSensor(PowerSensorBase):
@@ -215,4 +222,6 @@ class ZappiPowerSensor(PowerSensorBase):
     def update(self):
         """Get latest cached states from the device."""
         self._state = self._device.power
-        self._attributes = {}
+        self._attributes = {
+            ATTR_LAST_UPDATED: self._device.last_updated.isoformat(),
+        }

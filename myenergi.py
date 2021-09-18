@@ -13,27 +13,28 @@ from requests.auth import HTTPDigestAuth
 
 
 logger = logging.getLogger(__name__)
-api_root = "https://s7.myenergi.net"
+api_host_default = "director.myenergi.net"
 
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-def get_uri(m, params=None, order=None, sep=None):
+def get_uri(m, params=None, order=None, sep=None, asn=None):
     if params is None:
         params = {}
     if order is None:
         order = sorted(params.keys())
     if sep is None:
         sep = "-"
+    if not asn:
+        asn = api_host_default
 
     qs = "-" + sep.join([params[k] for k in order])
-    root_parts = urlparse(api_root)
     return urlunparse(
         (
-            root_parts.scheme,
-            root_parts.netloc,
-            urljoin(root_parts.path, "/cgi-{}{}".format(m, qs)),
+            "https",
+            asn,
+            "/cgi-{}{}".format(m, qs),
             "",
             "",
             "",
@@ -51,6 +52,7 @@ class Hub:
             "Content-Type": "application/json"})
         self._zappis = {}
         self._harvis = {}
+        self._asn = None
 
     def async_request(self, m, params, order=None, sep=None):
         loop = asyncio.get_running_loop()
@@ -59,7 +61,10 @@ class Hub:
     def request(self, m, params, order=None, sep=None):
         # ugh. I want to use aiohttp, but the digest authentication makes this
         # painful
-        resp = self.session.get(get_uri(m, params, order, sep))
+        resp = self.session.get(get_uri(m, params, order, sep, asn=self._asn))
+        if resp.status_code == 401 and 'x_myenergi-asn' in resp.headers:
+            self._asn = resp.headers['x_myenergi-asn']
+            return self.request(m, params, order, sep)
         resp.raise_for_status()
         return resp.json()
 
@@ -174,6 +179,7 @@ class Device:
         self.__hub = weakref.ref(hub) if hub else None
         self.serial = serial
         self.last_updated = None
+        self.generators = []
     
     @property
     def hub(self):
@@ -189,7 +195,7 @@ class Device:
         return '{}({})'.format(self.__class__.__name__, self.serial)
 
     def _update_from_json(self, data):
-        self.generators = []
+        generators = []
         for n in range(1, 6):
             g_name = 'ectt{}'.format(n)
             if g_name not in data:
@@ -201,7 +207,7 @@ class Device:
                     'type': DeviceType(data['ectt{}'.format(n)].lower()),
                     'power': data['ectp{}'.format(n)]
                 }
-                self.generators.append(g)
+                generators.append(g)
             except (ValueError) as e:
                 # unsupported device type
                 #logger.warning('Unsupported device type {}'.format(data['ectt{}'.format(n)]))
@@ -210,6 +216,7 @@ class Device:
         dt = datetime.datetime.strptime(
             "{}T{}".format(data["dat"], data["tim"]), "%d-%m-%YT%H:%M:%S"
         )
+        self.generators = generators
         self.last_updated = dt.replace(tzinfo=pytz.UTC)
 
     @classmethod

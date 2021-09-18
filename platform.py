@@ -39,6 +39,7 @@ ATTR_MODE_ECO_PLUS = 'Eco-Plus'
 # other attributes
 ATTR_POWER = 'power'
 ATTR_VOLTAGE = 'voltage'
+ATTR_LAST_UPDATED = 'last_updated'
 
 DEVICE_SCHEMA = vol.Schema({
     vol.Required(CONF_USERNAME): cv.string,
@@ -95,7 +96,7 @@ class MyEnergiManager:
             _LOGGER.info('Backing off; will retry in %s seconds', round((
                 self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
             ).total_seconds(), 2))
-            return
+            return [], []
 
         self.back_off = 0
         from .binary_sensor import ZappiPresenceSensor
@@ -138,7 +139,7 @@ class MyEnergiManager:
             _LOGGER.info('Backing off; will retry in %s seconds', round((
                 self.SCAN_INTERVAL * (1 + (self.back_off ** self.back_off_factor))
             ).total_seconds(), 2))
-            return
+            return [], []
 
         self.back_off = 0
         from .sensor import GenerationSensor
