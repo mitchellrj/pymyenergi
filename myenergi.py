@@ -13,27 +13,28 @@ from requests.auth import HTTPDigestAuth
 
 
 logger = logging.getLogger(__name__)
-api_root = "https://s7.myenergi.net"
+api_host_default = "director.myenergi.net"
 
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-def get_uri(m, params=None, order=None, sep=None):
+def get_uri(m, params=None, order=None, sep=None, asn=None):
     if params is None:
         params = {}
     if order is None:
         order = sorted(params.keys())
     if sep is None:
         sep = "-"
+    if not asn:
+        asn = api_host_default
 
     qs = "-" + sep.join([params[k] for k in order])
-    root_parts = urlparse(api_root)
     return urlunparse(
         (
-            root_parts.scheme,
-            root_parts.netloc,
-            urljoin(root_parts.path, "/cgi-{}{}".format(m, qs)),
+            "https",
+            asn,
+            "/cgi-{}{}".format(m, qs),
             "",
             "",
             "",
@@ -51,6 +52,7 @@ class Hub:
             "Content-Type": "application/json"})
         self._zappis = {}
         self._harvis = {}
+        self._asn = None
 
     def async_request(self, m, params, order=None, sep=None):
         loop = asyncio.get_running_loop()
@@ -59,7 +61,10 @@ class Hub:
     def request(self, m, params, order=None, sep=None):
         # ugh. I want to use aiohttp, but the digest authentication makes this
         # painful
-        resp = self.session.get(get_uri(m, params, order, sep))
+        resp = self.session.get(get_uri(m, params, order, sep, asn=self._asn))
+        if resp.status_code == 401 and 'x_myenergi-asn' in resp.headers:
+            self._asn = resp.headers['x_myenergi-asn']
+            return self.request(m, params, order, sep)
         resp.raise_for_status()
         return resp.json()
 
