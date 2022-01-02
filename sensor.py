@@ -125,6 +125,8 @@ POWER_ICONS = {
 class PowerSensorBase(Entity):
     """The entity class for a generation source."""
 
+    state_class = "measurement"
+
     def __init__(self, device):
         self._name = None
         self._icon = None
