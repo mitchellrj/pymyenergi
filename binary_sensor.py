@@ -25,8 +25,8 @@ class ZappiPresenceSensor(BinarySensorEntity):
 
     def __init__(self, zappi):
         """Initialize the Zappi Sensor."""
-        self._zappi = zappi
-        self._name = 'Zappi z{} car connected'.format(zappi.serial)
+        self._device = zappi
+        self._name = 'Zappi z{} car connected'.format(self._device.serial)
         self._icon = 'mdi:car'
         self._state = None
         self._device_class = DEVICE_CLASS_PRESENCE
@@ -34,9 +34,13 @@ class ZappiPresenceSensor(BinarySensorEntity):
         self.update()
 
     @property
+    def unique_id(self):
+        return str(self._device)
+
+    @property
     def is_on(self):
         """Return True if entity is on."""
-        return self._zappi.status not in (ZappiStatus.FAULT, ZappiStatus.NOT_CONNECTED)
+        return self._device.status not in (ZappiStatus.FAULT, ZappiStatus.NOT_CONNECTED)
 
     @property
     def should_poll(self):
@@ -59,6 +63,18 @@ class ZappiPresenceSensor(BinarySensorEntity):
         return self._device_class
 
     @property
+    def device_info(self):
+        return {
+            'identifiers': {
+                (DOMAIN, self.unique_id)
+            },
+            'name': self._device.name,
+            'manufacturer': 'MyEnergi',
+            'model': self._device.device_type.value.title(),
+            'via_device': (DOMAIN, str(self._device.hub)),
+        }
+
+    @property
     def icon(self):
         """Icon to use in the frontend, if any."""
         return self._icon
@@ -71,7 +87,7 @@ class ZappiPresenceSensor(BinarySensorEntity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, 'z' + str(self._zappi.serial))
+            'identifiers': (DOMAIN, self.unique_id)
         }
 
     @property

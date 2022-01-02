@@ -43,8 +43,8 @@ class ZappiStatusSensor(Entity):
 
     def __init__(self, zappi):
         """Initialize the Zappi Sensor."""
-        self._zappi = zappi
-        self._name = 'Zappi z' + str(zappi.serial)
+        self._device = zappi
+        self._name = self._device.name
         self._icon = 'mdi:power-plug'
         self._state = None
         self._attributes = {}
@@ -54,6 +54,10 @@ class ZappiStatusSensor(Entity):
     def is_on(self):
         """Return True if entity is on."""
         return self._state in (STATE_BOOSTING, STATE_CHARGING)
+
+    @property
+    def unique_id(self):
+        return str(self._device)
 
     @property
     def should_poll(self):
@@ -93,10 +97,13 @@ class ZappiStatusSensor(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, str(self._zappi)),
-            'name': str(self._zappi),
+            'identifiers': {
+                (DOMAIN, self.unique_id)
+            },
+            'name': self._device.name,
             'manufacturer': 'MyEnergi',
-            'model': 'Zappi'
+            'model': self._device.device_type.value.title(),
+            'via_device': (DOMAIN, str(self._device.hub)),
         }
 
     @property
@@ -106,12 +113,12 @@ class ZappiStatusSensor(Entity):
 
     def update(self):
         """Get latest cached states from the device."""
-        self._state = STATE_MAP.get(self._zappi.status, STATE_FAULT)
+        self._state = STATE_MAP.get(self._device.status, STATE_FAULT)
         self._attributes = {
-            ATTR_MODE: MODE_MAP.get(self._zappi.mode, ATTR_MODE_ECO),
-            ATTR_POWER: self._zappi.power,
-            ATTR_VOLTAGE: self._zappi.voltage,
-            ATTR_LAST_UPDATED: self._zappi.last_updated.isoformat(),
+            ATTR_MODE: MODE_MAP.get(self._device.mode, ATTR_MODE_ECO),
+            ATTR_POWER: self._device.power,
+            ATTR_VOLTAGE: self._device.voltage,
+            ATTR_LAST_UPDATED: self._device.last_updated.isoformat(),
         }
 
 
@@ -128,12 +135,16 @@ class PowerSensorBase(Entity):
     state_class = "measurement"
 
     def __init__(self, device):
-        self._name = None
         self._icon = None
+        self._name = None
         self._device = device
         self._unit = POWER_WATT
         self._device_class = DEVICE_CLASS_POWER
         self.update()
+
+    @property
+    def unique_id(self):
+        return str(self._device)
 
     @property
     def should_poll(self):
@@ -169,14 +180,17 @@ class PowerSensorBase(Entity):
     @property
     def device_info(self):
         return {
-            'identifiers': (DOMAIN, str(self._device)),
-            'name': str(self._device),
+            'identifiers': {
+                (DOMAIN, self.unique_id)
+            },
+            'name': self._device.name,
             'manufacturer': 'MyEnergi',
-            'model': self._device.device_type.value.title()
+            'model': self._device.device_type.value.title(),
+            'via_device': (DOMAIN, str(self._device.hub)),
         }
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes of the binary sensor."""
         return self._attributes
 
@@ -198,7 +212,7 @@ class GenerationSensor(PowerSensorBase):
     def name(self):
         """Return the name of the device."""
         if self._name is None:
-            device_type_title = self._device.device_type.value.title()
+            device_type_title = self._device.name
             generator_type_title = self._device_type.value.title()
             self._name = '{} {} power from {}'.format(device_type_title, str(self._device), generator_type_title)
         return self._name
@@ -212,7 +226,7 @@ class ZappiPowerSensor(PowerSensorBase):
     @property
     def name(self):
         if self._name is None:
-            self._name = '{} {} power'.format(self._device.device_type.value.title(), str(self._device))
+            self._name = '{} power'.format(self._device.name)
         return self._name
 
 

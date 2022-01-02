@@ -46,6 +46,7 @@ class Hub:
 
     def __init__(self, serial, password):
         self.session = requests.session()
+        self.serial = serial
         self.session.auth = HTTPDigestAuth(serial, password)
         self.session.headers.update({
             "Accept": "application/json",
@@ -53,6 +54,9 @@ class Hub:
         self._zappis = {}
         self._harvis = {}
         self._asn = None
+
+    def __str__(self):
+        return str(self.serial)
 
     def async_request(self, m, params, order=None, sep=None):
         loop = asyncio.get_running_loop()
@@ -184,6 +188,10 @@ class Device:
     @property
     def hub(self):
         return self.__hub() if self.__hub else None
+
+    @property
+    def name(self):
+        return '{} {}'.format(self.device_type.value.title(), str(self))
 
     def __eq__(self, other):
         return self.serial == other.serial
