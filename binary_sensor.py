@@ -2,7 +2,7 @@
 import logging
 
 from homeassistant.const import CONF_USERNAME
-from homeassistant.components.binary_sensor import BinarySensorDevice, DEVICE_CLASS_PRESENCE
+from homeassistant.components.binary_sensor import BinarySensorEntity, DEVICE_CLASS_PRESENCE
 
 from .platform import DOMAIN
 from .myenergi import ZappiStatus
@@ -20,7 +20,7 @@ async def async_setup_platform(hass, config, async_add_entities, device_config=N
     await manager.start()
 
 
-class ZappiPresenceSensor(BinarySensorDevice):
+class ZappiPresenceSensor(BinarySensorEntity):
     """The entity class for the Zappi charging station presence sensor."""
 
     def __init__(self, zappi):
